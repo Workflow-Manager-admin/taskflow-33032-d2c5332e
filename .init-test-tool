@@ -1,0 +1,4 @@
+{
+    "command": "npm run test",
+    "working_directory": "/home/kavia/workspace/code-generation/taskflow-33032-d2c5332e/taskflow_web_app"
+}
