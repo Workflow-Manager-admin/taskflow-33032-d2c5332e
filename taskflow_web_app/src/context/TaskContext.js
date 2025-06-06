@@ -1,21 +1,21 @@
-import React, { createContext, useContext, useReducer, useEffect } from "react";
-import { v4 as uuidv4 } from "uuid";
+import React, { createContext, useContext, useReducer, useEffect, useCallback } from "react";
+import { API } from "../api";
 
 const TaskContext = createContext();
 
-const getInitialState = () => {
-  try {
-    const local = localStorage.getItem("taskflow-data");
-    return local ? JSON.parse(local) : { tasks: [], categories: [] };
-  } catch {
-    return { tasks: [], categories: [] };
-  }
+const initialState = {
+  tasks: [],
+  categories: [],
+  selectedCategory: null,
+  loading: true,
 };
-
-const initialState = getInitialState();
 
 function reducer(state, action) {
   switch (action.type) {
+    case "INIT":
+      return { ...state, ...action.payload, loading: false };
+    case "SET_LOADING":
+      return { ...state, loading: true };
     case "ADD_TASK":
       return { ...state, tasks: [...state.tasks, action.payload] };
     case "UPDATE_TASK":
@@ -49,8 +49,6 @@ function reducer(state, action) {
       };
     case "SELECT_CATEGORY":
       return { ...state, selectedCategory: action.payload };
-    case "INIT":
-      return { ...action.payload };
     default:
       return state;
   }
@@ -59,61 +57,67 @@ function reducer(state, action) {
 // PUBLIC_INTERFACE
 export function TaskProvider({ children }) {
   /**
-   * Provides global task and category handling.
-   * Persists to localStorage for demo purposes.
+   * Provides global task and category handling via API abstraction.
    */
   const [state, dispatch] = useReducer(reducer, initialState);
 
+  // Effects to fetch initial tasks/categories from mock API
   useEffect(() => {
-    localStorage.setItem("taskflow-data", JSON.stringify(state));
-  }, [state]);
-
-  // Initial setup: add a default category if none
-  useEffect(() => {
-    if (state.categories.length === 0) {
+    (async () => {
+      dispatch({ type: "SET_LOADING" });
+      const [tasksResp, catsResp] = await Promise.all([
+        API.getTasks(),
+        API.getCategories(),
+      ]);
+      let defaultCat = null;
+      if (catsResp.ok && catsResp.categories.length > 0) defaultCat = catsResp.categories[0].id;
       dispatch({
-        type: "ADD_CATEGORY",
+        type: "INIT",
         payload: {
-          id: uuidv4(),
-          name: "Personal",
-          color: "#ff0000",
+          tasks: tasksResp.ok ? tasksResp.tasks : [],
+          categories: catsResp.ok ? catsResp.categories : [],
+          selectedCategory: defaultCat,
         },
       });
-    }
+    })();
   }, []);
 
   // PUBLIC_INTERFACE
-  function addTask(task) {
-    dispatch({
-      type: "ADD_TASK",
-      payload: { ...task, id: uuidv4(), completed: false, inProgress: true },
-    });
-  }
-  // PUBLIC_INTERFACE
-  function updateTask(task) {
-    dispatch({ type: "UPDATE_TASK", payload: task });
-  }
-  // PUBLIC_INTERFACE
-  function deleteTask(taskId) {
-    dispatch({ type: "DELETE_TASK", payload: taskId });
-  }
-  // PUBLIC_INTERFACE
-  function toggleTaskStatus(taskId) {
-    dispatch({ type: "TOGGLE_TASK_STATUS", payload: taskId });
-  }
-  // PUBLIC_INTERFACE
-  function addCategory(name) {
-    dispatch({
-      type: "ADD_CATEGORY",
-      payload: { id: uuidv4(), name, color: "#ff0000" },
-    });
-  }
-  // PUBLIC_INTERFACE
-  function selectCategory(id) {
-    dispatch({ type: "SELECT_CATEGORY", payload: id });
-  }
+  const addTask = useCallback(async (task) => {
+    const resp = await API.addTask(task);
+    if (resp.ok) dispatch({ type: "ADD_TASK", payload: resp.task });
+  }, []);
 
-  const { tasks, categories, selectedCategory } = state;
+  // PUBLIC_INTERFACE
+  const updateTask = useCallback(async (task) => {
+    const resp = await API.updateTask(task);
+    if (resp.ok) dispatch({ type: "UPDATE_TASK", payload: resp.task });
+  }, []);
+
+  // PUBLIC_INTERFACE
+  const deleteTask = useCallback(async (taskId) => {
+    const resp = await API.deleteTask(taskId);
+    if (resp.ok) dispatch({ type: "DELETE_TASK", payload: taskId });
+  }, []);
+
+  // PUBLIC_INTERFACE
+  const toggleTaskStatus = useCallback(async (taskId) => {
+    const resp = await API.toggleTaskStatus(taskId);
+    if (resp.ok) dispatch({ type: "UPDATE_TASK", payload: resp.task });
+  }, []);
+
+  // PUBLIC_INTERFACE
+  const addCategory = useCallback(async (name) => {
+    const resp = await API.addCategory(name);
+    if (resp.ok) dispatch({ type: "ADD_CATEGORY", payload: resp.category });
+  }, []);
+
+  // PUBLIC_INTERFACE
+  const selectCategory = useCallback((id) => {
+    dispatch({ type: "SELECT_CATEGORY", payload: id });
+  }, []);
+
+  const { tasks, categories, selectedCategory, loading } = state;
   // Filter tasks for current category
   const filteredTasks = selectedCategory
     ? tasks.filter((t) => t.categoryId === selectedCategory)
@@ -122,10 +126,11 @@ export function TaskProvider({ children }) {
   return (
     <TaskContext.Provider
       value={{
-        tasks: state.tasks,
+        tasks,
         filteredTasks,
-        categories: state.categories,
-        selectedCategory: state.selectedCategory,
+        categories,
+        selectedCategory,
+        loading,
         addTask,
         updateTask,
         deleteTask,
