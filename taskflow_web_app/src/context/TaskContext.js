@@ -69,13 +69,30 @@ export function TaskProvider({ children }) {
         API.getTasks(),
         API.getCategories(),
       ]);
-      let defaultCat = null;
-      if (catsResp.ok && catsResp.categories.length > 0) defaultCat = catsResp.categories[0].id;
+
+      // Preset categories: always available, fixed ID and color
+      const presetCategories = [
+        { id: "preset-office", name: "Office Task", color: "#3B82F6" },
+        { id: "preset-urgent", name: "Urgent Task", color: "#E11D48" },
+        { id: "preset-noturgent", name: "Not Urgent Task", color: "#F59E42" },
+      ];
+      // Avoid duplicate by name (case-insensitive), custom ones come after presets
+      let userCategories =
+        catsResp.ok && catsResp.categories.length > 0 ? catsResp.categories : [];
+      userCategories = userCategories.filter(
+        (cat) =>
+          !presetCategories.some(
+            (preset) => preset.name.toLowerCase() === cat.name.toLowerCase()
+          )
+      );
+      const allCategories = [...presetCategories, ...userCategories];
+
+      let defaultCat = allCategories[0]?.id || null;
       dispatch({
         type: "INIT",
         payload: {
           tasks: tasksResp.ok ? tasksResp.tasks : [],
-          categories: catsResp.ok ? catsResp.categories : [],
+          categories: allCategories,
           selectedCategory: defaultCat,
         },
       });
