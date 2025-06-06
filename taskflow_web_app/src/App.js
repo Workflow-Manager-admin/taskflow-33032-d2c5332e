@@ -7,6 +7,7 @@ import Notification from "./components/Notification";
 import Auth from "./components/Auth";
 import { TaskProvider, useTaskContext } from "./context/TaskContext";
 import { AuthProvider, useAuthContext } from "./context/AuthContext";
+import { API } from "./api";
 
 /** Top bar with user info and notifications */
 function TopBar({ onLogout, user, onShowReminders }) {
@@ -45,6 +46,7 @@ function TaskFlowMain() {
     toggleTaskStatus,
     addCategory,
     selectCategory,
+    loading
   } = useTaskContext();
 
   const [modalOpen, setModalOpen] = useState(false);
@@ -52,37 +54,18 @@ function TaskFlowMain() {
   const [notif, setNotif] = useState("");
   const [reminders, setReminders] = useState([]);
 
-  // Setup reminders for upcoming/overdue tasks
+  // Reminders via API for upcoming/overdue tasks
+  async function fetchReminders() {
+    const resp = await API.getTaskReminders();
+    if (resp.ok) setReminders(resp.reminders || []);
+    else setReminders([]);
+  }
+
   useEffect(() => {
-    const now = new Date();
-    const soonDue = tasks.filter(
-      (t) =>
-        !t.completed &&
-        t.due &&
-        new Date(t.due).setHours(23,59,59,999) - now <= 86400000 &&
-        new Date(t.due).setHours(23,59,59,999) > now
-    );
-    const overdue = tasks.filter(
-      (t) =>
-        !t.completed &&
-        t.due &&
-        new Date(t.due).setHours(23,59,59,999) < now
-    );
-    setReminders([
-      ...overdue.map(
-        (t) =>
-          `Task "${t.title}" is overdue (was due ${new Date(
-            t.due
-          ).toLocaleDateString()})`
-      ),
-      ...soonDue.map(
-        (t) =>
-          `Task "${t.title}" is due soon (${new Date(
-            t.due
-          ).toLocaleDateString()})`
-      ),
-    ]);
-  }, [tasks]);
+    fetchReminders();
+    // Refresh reminders when tasks update
+    // eslint-disable-next-line
+  }, [tasks.length, tasks.map(t => [t.completed, t.due]).join(",")]);
 
   function handleAddTask() {
     setEditingTask(null);
@@ -92,21 +75,22 @@ function TaskFlowMain() {
     setEditingTask(task);
     setModalOpen(true);
   }
-  function handleSaveTask(task) {
+  async function handleSaveTask(task) {
     if (!task.title) return;
     if (task.id) {
-      updateTask(task);
+      await updateTask(task);
       setNotif("Task updated.");
     } else {
-      addTask(task);
+      await addTask(task);
       setNotif("Task created!");
     }
     setModalOpen(false);
+    fetchReminders();
   }
 
-  function handleAddCategory() {
+  async function handleAddCategory() {
     const name = window.prompt("New project name:");
-    if (name) addCategory(name);
+    if (name) await addCategory(name);
   }
 
   function handleShowReminders() {
@@ -115,6 +99,14 @@ function TaskFlowMain() {
     } else {
       setNotif("No reminders currently.");
     }
+  }
+
+  if (loading) {
+    return (
+      <div className="container" style={{ textAlign: "center", marginTop: "90px" }}>
+        <h2>Loading...</h2>
+      </div>
+    );
   }
 
   return (
@@ -179,12 +171,20 @@ function MainAppContainer() {
   const { user, login, signup, logout } = useAuthContext();
   const [showReminders, setShowReminders] = useState(false);
 
+  // Wrap login/signup with async
+  async function handleLogin(email, password) {
+    return await login(email, password);
+  }
+  async function handleSignup(email, password) {
+    return await signup(email, password);
+  }
+
   return (
     <div className="app">
       <TopBar user={user} onLogout={logout} onShowReminders={() => setShowReminders(true)} />
       {!user ? (
         <div className="container center-content" style={{ minHeight: "80vh" }}>
-          <Auth onLogin={login} onSignup={signup} />
+          <Auth onLogin={handleLogin} onSignup={handleSignup} />
         </div>
       ) : (
         <TaskFlowMain />
