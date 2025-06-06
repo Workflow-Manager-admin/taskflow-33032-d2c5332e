@@ -2,24 +2,28 @@ import React, { useState } from "react";
 
 // PUBLIC_INTERFACE
 function Auth({ onLogin, onSignup }) {
-  /** Handles authentication - minimal local simulated login/signup */
+  /** Handles authentication using API (async) */
   const [mode, setMode] = useState("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [message, setMessage] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  const submit = (e) => {
+  const submit = async (e) => {
     e.preventDefault();
     if (!email || !password) {
       setMessage("Email and password required");
       return;
     }
+    setLoading(true);
     if (mode === "login") {
-      const ok = onLogin(email, password);
+      const ok = await onLogin(email, password);
       setMessage(ok ? "" : "Invalid login");
+      if (!ok) setLoading(false);
     } else {
-      const ok = onSignup(email, password);
+      const ok = await onSignup(email, password);
       setMessage(ok ? "Signup successful. You may log in." : "Signup failed.");
+      setLoading(false);
     }
   };
 
@@ -34,6 +38,7 @@ function Auth({ onLogin, onSignup }) {
           placeholder="Email"
           value={email}
           onChange={e => setEmail(e.target.value)}
+          disabled={loading}
         />
         <input
           required
@@ -41,8 +46,13 @@ function Auth({ onLogin, onSignup }) {
           placeholder="Password"
           value={password}
           onChange={e => setPassword(e.target.value)}
+          disabled={loading}
         />
-        <button className="btn btn-large" type="submit">{mode === "login" ? "Log In" : "Sign Up"}</button>
+        <button className="btn btn-large" type="submit" disabled={loading}>
+          {loading
+            ? (mode === "login" ? "Logging in..." : "Signing up...")
+            : (mode === "login" ? "Log In" : "Sign Up")}
+        </button>
         <div className="auth-switch">
           {mode === "login" ? (
             <>
